@@ -1,7 +1,10 @@
 
-name = "logimacro-worker"
+name = "logimacro-ai"
 main = "worker/index.js"
 compatibility_date = "2024-01-01"
+
+[triggers]
+crons = ["0 * * * *"]
 
 [ai]
 binding = "AI"
@@ -10,10 +13,3 @@ binding = "AI"
 binding = "DB"
 database_name = "logimacro_db"
 database_id = "8861b077-f7d5-48e3-ba32-8a438603cbf3"
-
-[triggers]
-crons = ["0 * * * *"]
-
-[vars]
-FRED_API_KEY = ""
-EIA_API_KEY = ""
