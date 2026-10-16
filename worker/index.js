@@ -1,55 +1,75 @@
-
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
-    
-    // API: TOP3 분석 + AI 코멘트 생성
-    if (url.pathname === "/api/ai-comment") {
-      const body = await request.json();
-      const { topMovers } = body; // [{name, change, value}]
+    const corsHeaders = {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type",
+      "Content-Type": "application/json"
+    };
+    if (request.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
-      const prompt = `
-너는 20년 경력의 물류 전문 애널리스트다.
-다음은 오늘 가장 많이 움직인 지표 TOP3다:
-${JSON.stringify(topMovers, null, 2)}
-
-각 지표에 대해 물류 관점에서 2문장 코멘트를 작성해라.
-- 해운/항공/육상 중 어디에 영향이 있는지
-- 실무자가 당장 취해야 할 액션을 포함
-- 톤은 간결한 보고서형, 한국어로
-- JSON 배열로 반환: [{"indicator":"SCFI","comment":"...","severity":"위험|주의|양호"}]
-`;
-
-      const aiRes = await env.AI.run('@cf/meta/llama-3.1-8b-instruct', {
-        prompt,
-        max_tokens: 800
-      });
-
-      return Response.json(aiRes, { headers: { "Access-Control-Allow-Origin": "*" } });
+    // /api/oil - 실시간 WTI (【entity-Yahoo Finance¦canonical_name=Yahoo Finance】)
+    if (url.pathname === "/api/oil") {
+      try {
+        const res = await fetch("https://query1.finance.yahoo.com/v8/finance/chart/CL=F?interval=1d&range=2d", {
+          headers: { "User-Agent": "Mozilla/5.0" }
+        });
+        if (!res.ok) throw new Error(`Yahoo Finance HTTP ${res.status}: ${await res.text()}`);
+        const data = await res.json();
+        const result = data?.chart?.result?.[0];
+        if (!result) throw new Error("Yahoo response invalid: no result");
+        const meta = result.meta;
+        const price = meta.regularMarketPrice;
+        const prev = meta.chartPreviousClose;
+        if (price == null || prev == null) throw new Error("Price data missing");
+        const change = ((price - prev) / prev) * 100;
+        return Response.json({
+          source: "【entity-Yahoo Finance¦canonical_name=Yahoo Finance】 CL=F",
+          symbol: "WTI",
+          price: Number(price.toFixed(2)),
+          changePct: Number(change.toFixed(2)),
+          updatedAt: new Date().toISOString()
+        }, { headers: corsHeaders });
+      } catch (e) {
+        return Response.json({ error: true, message: `유가 조회 실패: ${e.message}`, endpoint: "/api/oil" }, { status: 502, headers: corsHeaders });
+      }
     }
 
-    // API: 뉴스 크롤링 (관리자 키워드 기반)
-    if (url.pathname === "/api/crawl") {
-      const keywords = await env.DB.prepare("SELECT keyword, category FROM keywords WHERE active=1").all();
-      // 실제 구현에서는 Google News RSS 파싱
-      // 여기서는 구조만 제공
-      return Response.json({ count: keywords.results?.length || 0, keywords: keywords.results });
+    // /api/fx - USD/KRW
+    if (url.pathname === "/api/fx") {
+      try {
+        const res = await fetch("https://open.er-api.com/v6/latest/USD");
+        if (!res.ok) throw new Error(`FX API HTTP ${res.status}`);
+        const j = await res.json();
+        if (j.result!== "success" ||!j.rates?.KRW) throw new Error("FX response invalid");
+        return Response.json({
+          source: "open.er-api.com",
+          base: "USD",
+          KRW: j.rates.KRW,
+          updatedAt: j.time_last_update_utc
+        }, { headers: corsHeaders });
+      } catch (e) {
+        return Response.json({ error: true, message: `환율 조회 실패: ${e.message}`, endpoint: "/api/fx" }, { status: 502, headers: corsHeaders });
+      }
     }
 
-    return new Response("LogiMacro Worker Running", { status: 200 });
-  },
+    // /api/freight - SCFI (공식 무료 API 없음 - 에러 출력)
+    if (url.pathname === "/api/freight") {
+      return Response.json({ error: true, message: "운임지수 조회 실패: SCFI 공식 무료 API가 없습니다. Shipping API 키 또는 크롤러를 연결해야 합니다.", endpoint: "/api/freight" }, { status: 502, headers: corsHeaders });
+    }
 
-  // 매시간 크롤링
-  async scheduled(event, env, ctx) {
-    ctx.waitUntil(crawlAndSave(env));
-  }
-};
+    // /api/keywords - D1
+    if (url.pathname === "/api/keywords") {
+      try {
+        if (!env.DB) throw new Error("D1 DB 바인딩 없음");
+        const { results } = await env.DB.prepare("SELECT * FROM keywords ORDER BY created_at DESC").all();
+        return Response.json(results, { headers: corsHeaders });
+      } catch (e) {
+        return Response.json({ error: true, message: `D1 조회 실패: ${e.message}` }, { status: 500, headers: corsHeaders });
+      }
+    }
 
-async function crawlAndSave(env) {
-  const keywords = await env.DB.prepare("SELECT * FROM keywords WHERE active=1").all();
-  for (const k of keywords.results || []) {
-    const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(k.keyword)}&hl=ko&gl=KR&ceid=KR:ko`;
-    // fetch + parse + insert to news table
-    // 생략 - 실제 배포시 xml2js 파싱 추가
+    return Response.json({ error: true, message: `Unknown endpoint: ${url.pathname}` }, { status: 404, headers: corsHeaders });
   }
 }
