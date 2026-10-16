@@ -9,7 +9,7 @@ binding = "AI"
 [[d1_databases]]
 binding = "DB"
 database_name = "logimacro_db"
-database_id = "REPLACE_WITH_YOUR_D1_ID"
+database_id = "8861b077-f7d5-48e3-ba32-8a438603cbf3"
 
 [triggers]
 crons = ["0 * * * *"]
