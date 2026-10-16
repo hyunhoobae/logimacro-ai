@@ -1,167 +1,39 @@
 <!DOCTYPE html>
-<html lang="ko">
-<head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LogiMacro AI - Full Dashboard REAL</title>
-<style>
-:root{--bg:#0f172a;--card:#1e293b;--line:#334155;--muted:#94a3b8;--red:#dc2626}
-*{margin:0;padding:0;box-sizing:border-box}body{font-family:Pretendard, sans-serif;background:var(--bg);color:#e2e8f0;padding:20px}
-h1{font-size:26px}h2{font-size:18px;margin:24px 0 12px}
-.sub{color:var(--muted);margin:6px 0 20px}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px;min-height:110px}
-.card h3{font-size:13px;color:var(--muted);margin-bottom:6px}
-.card .value{font-size:26px;font-weight:700}
-.card .change{font-size:13px;margin-top:4px}
-.meta{font-size:11px;color:#64748b;margin-top:8px}
-.error{background:#450a0a;border:1px solid var(--red);color:#fecaca;padding:10px;border-radius:8px;margin-top:10px;font-size:12px;white-space:pre-wrap}
-.ok{color:#4ade80}.down{color:#f87171}
-.loading{color:#38bdf8}
-.badge{padding:2px 8px;border-radius:99px;font-size:11px;background:#334155}
-.section{margin-top:28px}
-input,button{padding:10px 12px;border-radius:8px;border:1px solid var(--line);background:#0b1220;color:#e2e8f0}
-button{cursor:pointer;background:#2563eb;border-color:#2563eb}
-table{width:100%;border-collapse:collapse}th,td{padding:10px;border-bottom:1px solid var(--line);font-size:13px;text-align:left}
-</style>
-</head>
-<body>
-<h1>LogiMacro AI <span class="badge">FULL REAL - NO MOCK</span></h1>
-<p class="sub">모든 지표는 실시간 API에서만 가져옵니다. mock 0개. 실패 시 에러 표시. Worker: https://logimacro-ai.hh87kor.workers.dev</p>
-
-<h2>📊 핵심 지표</h2>
-<div class="grid">
-  <div class="card"><h3>WTI 유가 (CL=F)</h3><div class="value loading" id="oil-v">Loading...</div><div class="change" id="oil-c"></div><div class="meta" id="oil-m"></div><div id="oil-e"></div></div>
-  <div class="card"><h3>USD/KRW 환율</h3><div class="value loading" id="fx-v">Loading...</div><div class="change" id="fx-c"></div><div class="meta" id="fx-m"></div><div id="fx-e"></div></div>
-  <div class="card"><h3>SCFI / 해상운임</h3><div class="value loading" id="scfi-v">Loading...</div><div class="change" id="scfi-c"></div><div class="meta" id="scfi-m"></div><div id="scfi-e"></div></div>
-  <div class="card"><h3>항공화물 / Baltic Air</h3><div class="value loading" id="air-v">Loading...</div><div class="change" id="air-c"></div><div class="meta" id="air-m"></div><div id="air-e"></div></div>
-</div>
-
-<h2>🔥 TOP3 변동</h2>
-<div class="grid" id="top3-grid"></div>
-<div id="top3-error"></div>
-
-<h2>🤖 AI 코멘트</h2>
-<div class="card"><div id="ai-comment">지표 로드 후 생성됩니다...</div><div id="ai-error"></div><br><button onclick="genAI()">AI 코멘트 재생성</button></div>
-
-<h2 class="section">🗝️ 키워드 (D1)</h2>
-<div class="card"><table id="kw-table"><thead><tr><th>키워드</th><th>카테고리</th><th>생성일</th></tr></thead><tbody></tbody></table><div id="kw-error"></div>
-<br><input id="kw-input" placeholder="새 키워드"><input id="kw-cat" placeholder="카테고리 (해운/항공/글로벌)"><button onclick="addKw()">추가</button>
-</div>
-
+<html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LogiMacro - Crawler Only</title>
+<style>body{background:#0f172a;color:#e2e8f0;font-family:sans-serif;padding:20px}.card{background:#1e293b;border:1px solid #334155;border-radius:12px;padding:16px;margin-bottom:12px}.error{background:#450a0a;border:1px solid #dc2626;color:#fecaca;padding:10px;border-radius:8px;white-space:pre-wrap}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}button{padding:10px 16px;background:#2563eb;border:0;border-radius:8px;color:#fff;cursor:pointer}</style>
+</head><body>
+<h1>LogiMacro AI - Crawler ONLY (API 0개)</h1>
+<p>Worker가 직접 크롤링해서 D1에 저장한 데이터만 표시합니다.</p>
+<button onclick="crawl()">🔄 지금 크롤링 실행 (/api/crawl)</button> <span id="status"></span>
+<div class="grid" id="freight-grid"></div>
+<h2>📰 뉴스 (Google News RSS 크롤러)</h2>
+<div id="news-list"></div>
+<div id="error"></div>
 <script>
-const WORKER = "https://logimacro-ai.hh87kor.workers.dev";
-let latestData = {};
-
-function showError(containerId, api, err){
-  document.getElementById(containerId).innerHTML = `<div class="error">❌ ${api} 실패\n${err.message}\n\n콘솔/Network 탭에서 ${WORKER}${api} 응답 확인</div>`;
-}
-function clearError(containerId){ document.getElementById(containerId).innerHTML=""; }
-
-async function fetchReal(api){
-  const res = await fetch(`${WORKER}${api}`);
-  const data = await res.json();
-  if(!res.ok || data.error) throw new Error(data.message || `HTTP ${res.status}`);
-  return data;
-}
-
-async function loadOil(){
+const WORKER="https://logimacro-ai.hh87kor.workers.dev";
+async function load(){
   try{
-    const d = await fetchReal("/api/oil");
-    latestData.oil = d;
-    document.getElementById("oil-v").textContent = `$${d.price}`;
-    document.getElementById("oil-c").textContent = `${d.changePct>0?'+':''}${d.changePct}%`;
-    document.getElementById("oil-c").className = d.changePct>=0?"change ok":"change down";
-    document.getElementById("oil-m").textContent = `출처: ${d.source} | ${d.updatedAt}`;
-    clearError("oil-e");
+    const r=await fetch(`${WORKER}/api/dashboard`);
+    const d=await r.json();
+    if(!r.ok||d.error) throw new Error(d.message);
+    document.getElementById("freight-grid").innerHTML=d.freights.map(f=>`<div class="card"><b>${f.name}</b><br><span style="font-size:24px">${f.value}</span><br><small>${f.source} | ${f.created_at}</small></div>`).join("");
+    document.getElementById("news-list").innerHTML=d.news.map(n=>`<div class="card"><a href="${n.url}" target="_blank" style="color:#60a5fa">${n.title}</a><br><small>${n.category} | ${n.source}</small></div>`).join("")||"뉴스 없음";
+    document.getElementById("error").innerHTML="";
   }catch(e){
-    document.getElementById("oil-v").textContent = "ERROR";
-    document.getElementById("oil-v").style.color="#f87171";
-    showError("oil-e","/api/oil",e);
+    document.getElementById("error").innerHTML=`<div class="error">❌ 대시보드 로드 실패\n${e.message}\n\n1. D1 테이블 생성했는지 확인\n2. /api/crawl 을 먼저 실행해야 데이터가 생깁니다.</div>`;
   }
 }
-async function loadFx(){
+async function crawl(){
+  document.getElementById("status").textContent="크롤링 중...";
   try{
-    const d = await fetchReal("/api/fx");
-    latestData.fx = d;
-    document.getElementById("fx-v").textContent = `${Number(d.KRW).toLocaleString()} 원`;
-    document.getElementById("fx-m").textContent = `출처: ${d.source} | ${d.updatedAt}`;
-    clearError("fx-e");
-  }catch(e){
-    document.getElementById("fx-v").textContent = "ERROR";
-    document.getElementById("fx-v").style.color="#f87171";
-    showError("fx-e","/api/fx",e);
-  }
+    const r=await fetch(`${WORKER}/api/crawl`);
+    const d=await r.json();
+    if(!r.ok||d.error) throw new Error(d.message);
+    document.getElementById("status").textContent="완료: "+d.logs.join(", ");
+    load();
+  }catch(e){ document.getElementById("status").textContent="실패: "+e.message; }
 }
-async function loadFreight(){
-  try{
-    const d = await fetchReal("/api/freight");
-    document.getElementById("scfi-v").textContent = d.value;
-    clearError("scfi-e");
-  }catch(e){
-    document.getElementById("scfi-v").textContent = "ERROR";
-    document.getElementById("scfi-v").style.color="#f87171";
-    showError("scfi-e","/api/freight",e);
-  }
-}
-async function loadAir(){
-  try{
-    const d = await fetchReal("/api/air");
-    document.getElementById("air-v").textContent = d.value;
-    clearError("air-e");
-  }catch(e){
-    document.getElementById("air-v").textContent = "ERROR";
-    document.getElementById("air-v").style.color="#f87171";
-    showError("air-e","/api/air",e);
-  }
-}
-
-async function loadKeywords(){
-  try{
-    const data = await fetchReal("/api/keywords");
-    const tbody = document.querySelector("#kw-table tbody");
-    tbody.innerHTML = "";
-    data.forEach(r=>{
-      tbody.innerHTML += `<tr><td>${r.keyword}</td><td>${r.category}</td><td>${r.created_at}</td></tr>`;
-    });
-    clearError("kw-error");
-  }catch(e){ showError("kw-error","/api/keywords",e); }
-}
-
-async function genAI(){
-  const el = document.getElementById("ai-comment");
-  try{
-    if(!latestData.oil && !latestData.fx) throw new Error("유가/환율 먼저 로드되어야 AI 생성이 가능합니다. 위 에러를 먼저 해결하세요.");
-    el.textContent = "AI 생성 중...";
-    const res = await fetch(`${WORKER}/api/ai-comment`, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(latestData)});
-    const data = await res.json();
-    if(!res.ok || data.error) throw new Error(data.message);
-    el.textContent = JSON.stringify(data, null, 2);
-    clearError("ai-error");
-  }catch(e){ showError("ai-error","/api/ai-comment",e); }
-}
-
-function buildTop3(){
-  // TOP3는 실제 변동률로만 계산 - mock 없음
-  const items = [];
-  if(latestData.oil) items.push({name:"WTI 유가", change:latestData.oil.changePct, price:latestData.oil.price});
-  if(latestData.fx) items.push({name:"USD/KRW", change:0, price:latestData.fx.KRW});
-  if(items.length===0){
-    document.getElementById("top3-grid").innerHTML = `<div class="error">TOP3를 계산할 실시간 데이터가 없습니다. 위 지표 에러를 해결하세요.</div>`;
-    return;
-  }
-  items.sort((a,b)=>Math.abs(b.change)-Math.abs(a.change));
-  const grid = document.getElementById("top3-grid");
-  grid.innerHTML = "";
-  items.slice(0,3).forEach(it=>{
-    grid.innerHTML += `<div class="card"><h3>${it.name}</h3><div class="value">${it.price}</div><div class="change ${it.change>=0?'ok':'down'}">${it.change}%</div></div>`;
-  });
-}
-
-// 초기 로드
-(async()=>{
-  await Promise.all([loadOil(), loadFx(), loadFreight(), loadAir(), loadKeywords()]);
-  buildTop3();
-})();
+load();
 </script>
-</body>
-</html>
+</body></html>
